@@ -5,7 +5,7 @@ import { idlFactory } from "../../../declarations/nft";
 import { Principal } from "@dfinity/principal";
 
 function Item(props) {
-  const id = Principal.fromText(props.id);
+  const id = props.id;
   const localHost = "http://localhost:8000";
   const agent = new HttpAgent({ host: localHost });
   const [name, setName] = useState("");
