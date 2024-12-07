@@ -3,33 +3,103 @@ import logo from "../../assets/logo.png";
 import {Actor, HttpAgent } from "@dfinity/agent";
 import { idlFactory } from "../../../declarations/nft";
 import { Principal } from "@dfinity/principal";
+import Button from "./Button";
+import { opend } from "../../../declarations/opend";
+import CURRENT_USER_ID from "../index";
+import PriceLabel from "./PriceLabel";
+
 
 function Item(props) {
   const id = props.id;
   const localHost = "http://localhost:8000";
   const agent = new HttpAgent({ host: localHost });
+  // when deployed, remove the code
+  agent.fetchRootKey()
+  // ==============================
   const [name, setName] = useState("");
   const [principal, setPrincipal] = useState(null)
   const [image, setImage] = useState("");
+  const [button, setButton] = useState();
+  const [priceInput, setPriceInput] = useState();
+  const [loaderHidden, setLoaderHidden] = useState(true);
+  const [blur, setBlur] = useState();
+  const [sellStatus, setSellStatus] = useState("");
+  const [priceLabel, setPriceLabel] = useState();
+  let NFTActor;
 
   async function loadNFT() {
-    const NFTActor = await Actor.createActor(idlFactory,{
+    NFTActor = await Actor.createActor(idlFactory,{
       agent,
       canisterId: id
     });
     const name = await NFTActor.getName();
     setName(name);
+
     const principal = await NFTActor.getOwner();
     setPrincipal(principal.toText());
+
     const imageData = await NFTActor.getImage();
     const imageContent = new Uint8Array(imageData);
     const image = URL.createObjectURL(new Blob([imageContent], { type: "image/png" }));
     setImage(image);
+
+    if(props.role == "collection"){
+      const nftIsListed = await opend.isListed(props.id);
+      if(nftIsListed){
+        setPrincipal("OpenD");
+        setBlur({filter: "blur(5px)"})
+        setSellStatus("Listed");
+      }else{
+        setButton(<Button handleClick={handleSell} text={"sell"}></Button>);
+      }    
+    }else if(props.role == "discover"){
+      const originalOwner = await opend.getOriginalOwner(props.id);
+      if(originalOwner != CURRENT_USER_ID){
+        setButton(<Button handleClick={handleSell} text={"buy"}></Button>);
+      };
+
+      const price = await opend.getListedNFTPrice(props.id);
+      setPriceLabel(<PriceLabel price={price.toString()}/>);
+    }
+    
   }
 
   useEffect(() => {
     loadNFT();
   }, []);
+
+  let price;
+  function handleSell(){
+    setPriceInput(
+      <input
+        placeholder="Price in GARD"
+        type="number"
+        className="price-input"
+        value={price}
+        onChange={(e) => (price = e.target.value)}
+      />
+    );
+    setButton(<Button handleClick={sellItem} text={"confirm"}></Button>)
+  }
+
+  async function sellItem(){
+    setBlur({filter: "blur(5px)"})
+    setLoaderHidden(false)
+    const listingResult = await opend.listItem(id, Number(price));
+    console.log("listingResult",listingResult);
+    if(listingResult == "Success"){
+      const openDId = await opend.getOpenDCanisterID()
+      const transferResult = await NFTActor.transferOwnership(openDId);
+      console.log("transfe",transferResult);
+      if(transferResult == "Success"){
+        setLoaderHidden(true);
+        setButton();
+        setPriceInput();
+        setPrincipal("OpenD");
+        setSellStatus("Listerd");
+      };
+    }
+  }
 
   return (
     <div className="disGrid-item">
@@ -37,15 +107,25 @@ function Item(props) {
         <img
           className="disCardMedia-root makeStyles-image-19 disCardMedia-media disCardMedia-img"
           src={image}
+          style={blur}
         />
+        <div hidden={loaderHidden} className="lds-ellipsis">
+          <div></div>
+          <div></div>
+          <div></div>
+          <div></div>
+        </div>
         <div className="disCardContent-root">
+          {priceLabel}
           <h2 className="disTypography-root makeStyles-bodyText-24 disTypography-h5 disTypography-gutterBottom">
-            {name}<span className="purple-text"></span>
+            {name}<span className="purple-text"> {sellStatus}</span>
           </h2>
           <p className="disTypography-root makeStyles-bodyText-24 disTypography-body2 disTypography-colorTextSecondary">
             <p className="disTypography-root makeStyles-bodyText-24 disTypography-body2 disTypography-colorTextSecondary">
               Owner: {principal}
             </p>
+            {priceInput}
+            {button}
           </p>
         </div>
       </div>
